@@ -248,12 +248,12 @@ application = tornado.web.Application([
 
 if __name__ == "__main__":
     print "Starting server"
-    import Configparser
+    import ConfigParser
     conf = os.path.join("..","config.ini")
 
     port = 8888
     if os.path.lexists(conf):
-        confp = Configparser.ConfigParser()
+        confp = ConfigParser.ConfigParser()
         confp.read(conf)
         if confp.has_option("general", "adminPassword"):
             adminPwd = confp.get("general", "adminPassword")
