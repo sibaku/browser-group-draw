@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Group Draw</title>
+        <meta charset="utf-8" />
+        <style type="text/css">
+            body {
+                text-align: center;
+                min-width: 900px;
+            }
+
+            #selectable .ui-selecting { background: #FECA40; }
+            #selectable .ui-selected { background: #F39814; color: white; }
+            #selectable { list-style-type: none; margin: 0; padding: 0; width:200px; }
+            #selectable li { margin: 3px; padding: 0.4em; font-size: 1em; height: 18px; }
+        </style>
+
+
+        <link rel="stylesheet" href="js/libs/jqueryUi/jquery-ui.css">
+
+        <script src="js/libs/jquery/jquery.js"></script>
+        <script src="js/libs/jqueryUi/jquery-ui.min.js"></script>
+        <script src="js/libs/whammy/whammy.js"></script>
+        <script src="js/libs/libwebp-0.1.min.js"></script>
+        <script src="js/util.js"></script>
+        <script src="js/main.js"></script>
+        
+    
+    </head>
+
+    <body>
+<!--        <div id="connectDialog">
+            <label for="host">host:</label>
+            <input type="text" id="host" value="localhost" style="background:#ff0000;"/><br />
+            <label for="port">port:</label>
+            <input type="text" id="port" value="8888" style="background:#ff0000;"/><br />
+            <label for="uri">uri:</label>
+            <input type="text" id="uri" value="/ws" style="background:#ff0000;"/><br />
+            <input type="submit" id="open" value="open" />
+        </div>-->
+
+        <!--        <div id="loadWacomBox">
+                    <p>Load Wacom plugin</p>
+                    <input type="button" id="loadWacomButton" value="LoadWacom" />
+                </div>-->
+        <div>
+            <canvas id="drawCanvas" width="1000" height="800" style="border: solid">No Canvas for you!:( </canvas>
+        </div>
+
+        <div id="pluginContainer">
+            <object id="wtPlugin" type="application/x-wacomtabletplugin"  width="0" height="0">
+                <param name="onload" value="pluginLoaded" />
+
+            </object>
+        </div>
+
+
+
+        <div id="colorPen">
+            <div id="colorbox">
+
+            </div>
+            <div id="penPropertyContainer">
+                <h4>Tool properties</h4>
+                <div id="propertyBox"></div>
+            </div>
+            <div id="saveImage">
+                <button id="saveImageButton">Create saveable image</button>
+            </div>
+             <div id="saveVideo">
+                <button id="saveVideoButton">Create video</button>
+            </div>
+        </div>
+
+
+        <div id="toolbox">
+        </div>
+
+        <div id="chatContainer">
+            <div>
+                <div id="chatlog"></div>
+                <!--<textarea id="chatlog" contenteditable="false" rows="6" cols="50" style="float: left"></textarea>-->
+                <ul id="chatUserList" style="float: left;  overflow-y: scroll;">
+
+                </ul>
+            </div>
+
+            <div>
+                <p style="clear: both">
+                    Input: <input id="chatInput" type="text"/> 
+                    <button id="chatInputSend">Send</button>
+                </p>
+                <p><button id="initServerConnect">Connect to Server</button></p>
+            </div>
+        </div>
+        
+            
+    </body>
+</html>
