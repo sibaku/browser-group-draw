@@ -1252,6 +1252,7 @@ DT.VideoExportPlayer.prototype.run = function (time) {
         this.video.finish(function (output) {
             that.dialog.children('p').text("Generated file");
             var url = (window.webkitURL || window.URL).createObjectURL(output);
+            output = null;
             var link = document.createElement("a");
             link.download = "videoLog_" + that.vidCount + "." + that.type;
             link.href = url;
@@ -1322,11 +1323,11 @@ DT.numToBytes = function (n) {
         hex = "0" + hex;
     }
 
-    var array = [];
-    array.push(Number.parseInt(hex.substr(6, 2), 16));
-    array.push(Number.parseInt(hex.substr(4, 2), 16));
-    array.push(Number.parseInt(hex.substr(2, 2), 16));
-    array.push(Number.parseInt(hex.substr(0, 2), 16));
+    var array = new Uint8Array(4);
+    array[0] = (Number.parseInt(hex.substr(6, 2), 16));
+    array[1] = (Number.parseInt(hex.substr(4, 2), 16));
+    array[2] = (Number.parseInt(hex.substr(2, 2), 16));
+    array[3] = (Number.parseInt(hex.substr(0, 2), 16));
 
     return array;
 
@@ -1337,6 +1338,14 @@ DT.insertNumberIntoByteArray = function (a, n) {
     for (var i = 0; i < size.length; i++) {
         a.push(size[i]);
     }
+};
+
+DT.stringToBytes = function (s) {
+    var data = new Uint8Array(s.length);
+    for (var i = 0; i < s.length; i++) {
+        data[i] = s.charCodeAt(i);
+    }
+    return data;
 };
 DT.insertStringIntoByteArray = function (a, s) {
     for (var i = 0; i < s.length; i++) {
@@ -1359,7 +1368,7 @@ DT.TypedChunk.prototype.length = function () {
     var sum = 0;
     for (var i = 0; i < this.children.length; i++) {
         var c = this.children[i];
-        if (c instanceof Array) {
+        if (c instanceof Array ||  c instanceof Uint8Array) {
             sum += c.length;
         } else {
             sum += c.length();
@@ -1403,79 +1412,122 @@ DT.TypedChunk.prototype.flattenTimeout = function (maxIt, cb) {
     var current = this;
     var last = this;
     var currentIndex = 0;
+    var totalData = [];
 
-    function worker() {
-        console.log("Start worker");
-        var it = 0;
-        while (current && it < maxIt) {
-            var children = current.children;
-            last = current;
-            // Leaf
-            if (children.length === 1 && children[0] instanceof Array) {
-                list.push(current);
-                currentIndex = indices.pop() + 1;
+    var that = this;
+    while (current) {
+        var children = current.children;
+        last = current;
+        // Leaf
+        if (children.length === 1 && (children[0] instanceof Array || children[0] instanceof Uint8Array)) {
+            list.push(current);
+            currentIndex = indices.pop() + 1;
+
+//
+//                var a = [];
+//                DT.insertStringIntoByteArray(a, current.id);
+//
+//                var temp = [];
+//                DT.insertStringIntoByteArray(temp, current.type);
+//                DT.insertNumberIntoByteArray(a, current.children[0].length + temp.length);
+
+//                current.data = [new Uint8Array(a)].concat([new Uint8Array(temp)]).concat([new Uint8Array(current.children[0])]);
+//                current.dataSize = a.length + temp.length + current.children[0].length;
+//                
+            // Header
+            current.dataSize = current.children[0].length;
+            // Id + type
+            current.headerSize = 4 + current.type.length;
+//                current.children = [];
+            current.leaf = true;
+            current = current.parent;
+
+        } else if (currentIndex === children.length) {
+
+            list.push(current);
 
 
-                var a = [];
-                DT.insertStringIntoByteArray(a, current.id);
+//                var a = [];
+//                DT.insertStringIntoByteArray(a, current.id);
 
-                var temp = [];
-                DT.insertStringIntoByteArray(temp, current.type);
-                DT.insertNumberIntoByteArray(a, current.children[0].length + temp.length);
-
-                current.data = [new Uint8Array(a)].concat([new Uint8Array(temp)]).concat([new Uint8Array(current.children[0])]);
-                current.dataSize = a.length + temp.length + current.children[0].length;
-                current.children = [];
-
-                current = current.parent;
-
-                it++;
-            } else if (currentIndex === children.length) {
-
-                list.push(current);
-
-
-                var a = [];
-                DT.insertStringIntoByteArray(a, current.id);
-
-                var childs = [];
-                var size = 0;
-                var temp = [];
-                DT.insertStringIntoByteArray(temp, current.type);
+//                var childs = [];
+            var size = 0;
+//                var temp = [];
+//                DT.insertStringIntoByteArray(temp, current.type);
 //                childs.push(new Uint8Array(temp));
 //                size += temp.length;
-                for (var i = 0; i < children.length; i++) {
+            for (var i = 0; i < children.length; i++) {
 
-                    childs = childs.concat(children[i].data);
-                    size += children[i].dataSize;
-                    children[i].data = null;
-                    children[i].dataSize = 0;
-                }
-                DT.insertNumberIntoByteArray(a, size + temp.length);
-
-                current.data = [new Uint8Array(a)].concat([new Uint8Array(temp)]).concat(childs);
-                current.dataSize = a.length + temp.length + size;
-
-                current.children = [];
-
-
-                currentIndex = indices.pop() + 1;
-                current = current.parent;
-            } else {
-                indices.push(currentIndex);
-                current = children[currentIndex];
-                currentIndex = 0;
+//                    childs = childs.concat(children[i].data);
+                size += children[i].dataSize + children[i].headerSize;
+//                    children[i].data = null;
+//                    children[i].dataSize = 0;
             }
+//                DT.insertNumberIntoByteArray(a, size + temp.length);
 
-        }
+//                current.data = [new Uint8Array(a)].concat([new Uint8Array(temp)]).concat(childs);
+            current.dataSize = size;
+            current.headerSize = 4 + current.type.length;
 
-        if (current) {
-            window.setTimeout(worker, 60);
+//                current.children = [];
+
+
+            currentIndex = indices.pop() + 1;
+            current = current.parent;
         } else {
-            cb(last.data);
+            indices.push(currentIndex);
+            current = children[currentIndex];
+            currentIndex = 0;
         }
 
     }
+
+    current = this;
+
+    function worker() {
+        var it = 0;
+        while (current && it < maxIt) {
+
+            if (!current.visited) {
+
+                var size = current.dataSize;
+                totalData.push(DT.stringToBytes(current.id));
+                totalData.push(DT.numToBytes(size));
+                totalData.push(DT.stringToBytes(current.type));
+                current.visited = true;
+                console.log("Header: " + current.id);
+            }
+            if (current.leaf) {
+                console.log("Data: " + current.id);
+                if (current.children[0] instanceof Uint8Array) {
+                    totalData.push(current.children[0]);
+                } else {
+
+                    totalData.push(new Uint8Array(current.children[0]));
+                }
+                current.children = [];
+                current = current.parent;
+                it++;
+            } else {
+                if (current.children.length > 0) {
+
+                    current = current.children.shift();
+                } else {
+                    current = current.parent;
+                }
+            }
+
+
+        }
+        if (current) {
+            window.setTimeout(worker, 60);
+        } else {
+            cb(totalData);
+        }
+
+    }
+
+
     worker();
 
 //
@@ -1683,15 +1735,16 @@ DT.MJPGEncoder.prototype.compile = function () {
 
         var f = frames[i];
         var bin = atob(f.split(",")[1]);
-        var data = [];
         var l = bin.length;
+        var padding =  l% 4 === 0 ? 0 : 4- l%4;
+        var data = new Uint8Array(l + padding);
         for (var j = 0; j < l; j++) {
-            data.push(bin.charCodeAt(j));
+            data[j] = bin.charCodeAt(j);
         }
-
-        while (data.length % 4 !== 0) {
-            data.push(0);
-        }
+//
+//        while (data.length % 4 !== 0) {
+//            data.push(0);
+//        }
         // ckid
         DT.insertStringIntoByteArray(indexData, "00dc");
 
@@ -2687,56 +2740,6 @@ DT.setColorChooser = function (name) {
 
 };
 
-DT.encodeCanvasToWebP = function (qualityVal, canvas, ctx) {
-
-    //24bit data (alpha coming soon)
-    var input = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    var w = input.width, h = input.height;
-    var inputData = input.data;
-    var out = {output: ''};
-    var start = new Date();
-
-    //CODE START
-    var encoder = new WebPEncoder();
-
-    //Config, you can set all arguments or what you need, nothing no objeect 
-    var
-            config = new Object()
-    config.target_size = 0;			// if non-zero, set the desired target size in bytes. Takes precedence over the 'compression' parameter.
-    config.target_PSNR = 0.;		// if non-zero, specifies the minimal distortion to	try to achieve. Takes precedence over target_size.
-    config.method = 0;				// quality/speed trade-off (0=fast, 6=slower-better)
-    config.sns_strength = 50;		// Spatial Noise Shaping. 0=off, 100=maximum.
-    config.filter_strength = 20;  	// range: [0 = off .. 100 = strongest]
-    config.filter_sharpness = 0;	// range: [0 = off .. 7 = least sharp]
-    config.filter_type = 1;			// filtering type: 0 = simple, 1 = strong (only used if filter_strength > 0 or autofilter > 0)
-    config.partitions = 0;			// log2(number of token partitions) in [0..3] Default is set to 0 for easier progressive decoding.
-    config.segments = 4;			// maximum number of segments to use, in [1..4]
-    config.pass = 1;				// number of entropy-analysis passes (in [1..10]).
-    config.show_compressed = 0;		// if true, export the compressed picture back. In-loop filtering is not applied.
-    config.preprocessing = 0;		// preprocessing filter (0=none, 1=segment-smooth)
-    config.autofilter = 0;			// Auto adjust filter's strength [0 = off, 1 = on]
-    //   --- description from libwebp-C-Source Code --- 
-    config.extra_info_type = 0;		// print extra_info
-    config.preset = 0 				//0: default, 1: picture, 2: photo, 3: drawing, 4: icon 5: text
-
-    //set Config; default config -> WebPConfig( null ) 
-    encoder.WebPEncodeConfig(config); //when you set the config you must it do for every WebPEncode... new
-
-    //start encoding
-    var size = encoder.WebPEncodeRGBA(inputData, w, h, w * 4, qualityVal, out); //w*4 desc: w = width, 3:RGB/BGR, 4:RGBA/BGRA 
-    //CODE END
-
-    return out;
-//    var end = new Date();
-//    var bench_libwebp = (end - start);
-//    encSpeedResult.innerHTML = 'Speed result:<br />libwebp: finish in ' + bench_libwebp + 'ms - ' + size + 'bytes<pre>' + encoder.ReturnExtraInfo() + '</pre>';
-//    //alert(size);
-//    encSaveBtn.disabled = false;
-//    base64URI = btoa(out.output);
-//    encOutputWebPImage.src = "data:image/webp;base64," + base64URI;
-
-
-};
 DT.start = function () {
     DT.State.currentUser = DT.createUser("default");
     DT.registerColorChooser("RGBA", new DT.RGBChooser());
@@ -2804,8 +2807,8 @@ DT.mainLoop = function (time) {
 
             if (e.action === "Playback") {
                 var lzw = e.lzwData;
-                
-                console.log("LZW data length: " +  lzw.length);
+
+                console.log("LZW data length: " + lzw.length);
                 var decomp = LZW.decompress(lzw);
                 console.log("DECOMP length: " + decomp.length);
 //                console.log(decomp);
@@ -3029,7 +3032,7 @@ DT.saveLocalLog = function () {
         var inputtime = $('<input id="inputTime" value ="' + (def * logLength / 1000).toFixed(2) + '"/>');
         var inputwidth = $('<input id="inputWidth" value ="' + res.w + '"/>');
         var inputheight = $('<input id="inputHeight" value ="' + res.h + '"/>');
-        var inputMaxFrames = $('<input id="inputMaxFrames" value ="-1"/>');
+        var inputMaxFrames = $('<input id="inputMaxFrames" value ="1500"/>');
         input.keyup(function () {
             var val = parseInt($('#inputStrokeDur').val());
             if (isNaN(val) || val < 1) {
