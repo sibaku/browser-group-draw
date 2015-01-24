@@ -1368,7 +1368,7 @@ DT.TypedChunk.prototype.length = function () {
     var sum = 0;
     for (var i = 0; i < this.children.length; i++) {
         var c = this.children[i];
-        if (c instanceof Array ||  c instanceof Uint8Array) {
+        if (c instanceof Array || c instanceof Uint8Array) {
             sum += c.length;
         } else {
             sum += c.length();
@@ -1736,7 +1736,7 @@ DT.MJPGEncoder.prototype.compile = function () {
         var f = frames[i];
         var bin = atob(f.split(",")[1]);
         var l = bin.length;
-        var padding =  l% 4 === 0 ? 0 : 4- l%4;
+        var padding = l % 4 === 0 ? 0 : 4 - l % 4;
         var data = new Uint8Array(l + padding);
         for (var j = 0; j < l; j++) {
             data[j] = bin.charCodeAt(j);
@@ -2101,7 +2101,10 @@ DT.Pen = function () {
 
     this.resetStroke();
 
-    this.pathOp = DT.Pen.nop;
+    this.smoothingFactor = 0.5;
+    this.smooth = false;
+
+    this.pathOp = DT.Pen.spline;
 
 };
 
@@ -2120,48 +2123,125 @@ DT.Pen.nop = function (points) {
     return points;
 };
 
-// Not yet working
-DT.Pen.spline = function (points) {
 
+DT.cubicSpline = function (p0, p1, p2, p3, num) {
+    var delta = 1 / (num - 1);
+    var result = [];
+    result.push(p0);
+    for (var j = 1; j < num - 1; j++) {
+        var t = j * delta;
+        var tinv = 1 - t;
+        var f0 = tinv * tinv * tinv;
+        var f1 = 3 * t * tinv * tinv;
+        var f2 = 3 * t * t * tinv;
+        var f3 = t * t * t;
+
+        var x = p0.x * f0 + p1.x * f1 + p2.x * f2 + p3.x * f3;
+        var y = p0.y * f0 + p1.y * f1 + p2.y * f2 + p3.y * f3;
+
+        // TODO Maybe use arc lengths
+        // Only endpoints have information :(
+        // Easy way : interpolate by t
+        // Better would be some kind of arc-length comparison, maybe later
+
+
+        var size = p0.size * tinv + p3.size * t;
+        var flow = p0.flow * tinv + p3.flow * t;
+
+        var p = {x: x, y: y, size: size, flow: flow};
+        result.push(p);
+
+
+    }
+    return result;
+};
+
+DT.quadraticSpline = function (p0, p1, p2, num) {
+    var delta = 1 / (num - 1);
+    var result = [];
+    result.push(p0);
+    for (var j = 1; j < num - 1; j++) {
+        var t = j * delta;
+        var f0 = t * t - 2 * t + 1;
+        var f1 = 2 * t * (1 - t);
+        var f2 = t * t;
+
+        var x = p0.x * f0 + p1.x * f1 + p2.x * f2;
+        var y = p0.y * f0 + p1.y * f1 + p2.y * f2;
+
+        // TODO Maybe use arc lengths
+        // Only endpoints have information :(
+        // Easy way : interpolate by t
+        // Better would be some kind of arc-length comparison, maybe later
+        var tinv = 1 - t;
+        var size = p0.size * tinv + p2.size * t;
+        var flow = p0.flow * tinv + p2.flow * t;
+
+        var p = {x: x, y: y, size: size, flow: flow};
+        result.push(p);
+
+
+    }
+    return result;
+};
+// Not yet working
+// Adapted from http://scaledinnovation.com/analytics/splines/aboutSplines.html
+DT.Pen.spline = function (points, tk) {
+
+
+    if (points.length < 3) {
+        return points;
+    }
     // 4 point packages
     var i = 0;
-    var last = 0;
-    var tk = 0.5;
-    var subdivisions = 5;
-    var delta = 1 / (subdivisions - 1);
+//    var tk = -0.5;
+    var subdivisions = 8;
     var result = [];
-    for (; i + 3 < points.length; i += 3) {
+    var clast = null;
+
+
+    for (; i + 2 < points.length; i++) {
 
         var p0 = points[i];
         var p1 = points[i + 1];
         var p2 = points[i + 2];
-        var p3 = points[i + 3];
 
-        result.push(p0);
-        for (var j = 1; j < subdivisions - 1; j++) {
-            var t = j * delta;
-            var f0 = t * (t * (3 - t) - 3) + 1;
-            var f1 = t * (t * (3 * t - 6) + 3);
-            var f2 = (3 - 3 * t) * t * t;
-            var f3 = t * t * t;
+        var x0 = p0.x;
+        var x1 = p1.x;
+        var x2 = p2.x;
 
-            var x = p0.x * f0 + p1.x * f1 + p2.x * f2 + p3.x * f3;
-            var y = p0.y * f0 + p1.y * f1 + p2.y * f2 + p3.y * f3;
-
-            var size = p0.size * f0 + p1.size * f1 + p2.size * f2 + p3.size * f3;
-            var flow = p0.flow * f0 + p1.flow * f1 + p2.flow * f2 + p3.flow * f3;
-
-            var p = {x: x, y: y, size: size, flow: flow};
-            result.push(p);
+        var y0 = p0.y;
+        var y1 = p1.y;
+        var y2 = p2.y;
 
 
+        var d01 = Math.sqrt(Math.pow(x1 - x0, 2) + Math.pow(y1 - y0, 2));
+        var d12 = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+        var fa = tk * d01 / (d01 + d12);   // scaling factor for triangle Ta
+        var fb = tk * d12 / (d01 + d12);   // ditto for Tb, simplifies to fb=t-fa
+        var p1x = x1 - fa * (x2 - x0);    // x2-x0 is the width of triangle T
+        var p1y = y1 - fa * (y2 - y0);    // y2-y0 is the height of T
+        var p2x = x1 + fb * (x2 - x0);
+        var p2y = y1 + fb * (y2 - y0);
+
+        var control1 = {x: p1x, y: p1y};
+        var control2 = {x: p2x, y: p2y};
+
+
+        if (clast) {
+            result = result.concat(DT.cubicSpline(p0, clast, control1, p1, subdivisions));
         }
-        last = i;
+        else {
+            // First
+            result = result.concat(DT.quadraticSpline(p0, control1, p1, subdivisions));
+        }
+        clast = control2;
+
     }
 
-    for (var i = last; i < points.length; i++) {
-        result.push(points[i]);
-    }
+    result = result.concat(DT.quadraticSpline(points[i], clast, points[i + 1]));
+    result.push(points[i + 1]);
+
     return result;
 };
 
@@ -2189,9 +2269,12 @@ DT.Pen.prototype.generatePropertyDialog = function (container) {
 
     var size = $('<input />', {type: "checkbox"});
     var flow = $('<input />', {type: "checkbox"});
-
+    var smooth = $('<input />', {type: "checkbox"});
     size.prop('checked', this.pressureControl.size);
     flow.prop('checked', this.pressureControl.flow);
+    smooth.prop('checked', this.smooth);
+
+
     var sizeSlider = $('<div />');
     sizeSlider.css({width: "200px"});
 
@@ -2201,12 +2284,22 @@ DT.Pen.prototype.generatePropertyDialog = function (container) {
     var opacitySlider = $('<div />');
     opacitySlider.css({width: "200px"});
 
+    var smoothnessSlider = $('<div />');
+    smoothnessSlider.css({width: "200px"});
+
     boxGeneral.append($('<p>Pen size:</p>'));
     boxGeneral.append(sizeSlider);
     boxGeneral.append($('<p>Spacing: </p>'));
     boxGeneral.append(spacingSlider);
     boxGeneral.append($('<p>Opacity: </p>'));
     boxGeneral.append(opacitySlider);
+    boxGeneral.append($('<p><h5>Path smoothing</h5></p>'));
+    boxGeneral.append($('<p>Activate Smoothing: </p>'));
+    boxGeneral.append(smooth);
+
+    boxGeneral.append($('<p>Smothness Factor: </p>'));
+    boxGeneral.append(smoothnessSlider);
+
 
     var that = this;
     var func = function () {
@@ -2215,6 +2308,10 @@ DT.Pen.prototype.generatePropertyDialog = function (container) {
         that.size = s;
 
     };
+    smooth.click(function () {
+
+        that.smooth = smooth.prop('checked');
+    });
 
     var softFunc = function () {
         var s = spacingSlider.slider('value');
@@ -2226,7 +2323,10 @@ DT.Pen.prototype.generatePropertyDialog = function (container) {
         var t = DT.getCurrentTool();
         that.opacity = s;
     };
-
+    var smoothFunc = function () {
+        var s = smoothnessSlider.slider('value');
+        that.smoothingFactor = s;
+    };
 
     sizeSlider.slider({min: 1, max: 200, step: 1});
     sizeSlider.slider('value', this.size);
@@ -2242,6 +2342,11 @@ DT.Pen.prototype.generatePropertyDialog = function (container) {
     opacitySlider.slider('value', this.opacity);
     opacitySlider.on("slide", opFunc);
     opacitySlider.on("slidechange", opFunc);
+
+    smoothnessSlider.slider({min: 0, max: 1, step: 1 / 255});
+    smoothnessSlider.slider('value', this.smoothingFactor);
+    smoothnessSlider.on("slide", smoothFunc);
+    smoothnessSlider.on("slidechange", smoothFunc);
 
 //    var flow = $('<li>Flow</li>').addClass('ui-widget-content');
 //    list.append(size);
@@ -2563,7 +2668,10 @@ DT.Pen.prototype.mouseup = function (e) {
 
 //    this.points.push(p);
     this.stroke.points.push(p);
-    this.stroke.points = this.pathOp(this.stroke.points);
+    if (this.smooth) {
+
+        this.stroke.points = DT.Pen.spline(this.stroke.points, this.smoothingFactor);
+    }
     var event = {type: "Tool", tool: "SimplePen", stroke: this.stroke, action: "Stroke"};
 //    this.playBack(this.stroke, localContext);
     DT.enqueueEvent(event);
